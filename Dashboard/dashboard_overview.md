@@ -5,6 +5,7 @@ The dashboard renders pre-generated model artifacts (metrics JSON + PNG figures)
 ## Components
 
 1. Artifact Refresh (automated by `app.py` on start)
+   - Automatically calls `Model/operational_model.py` if there is no `baggage_predictor_model.joblib` in the Southwest directory
    - Automatically calls `Model/create_validation_data.py` to rebuild `baggage_validation_data.csv` and `model_metrics.json` using the current `baggage_predictor_model.joblib`.
    - Automatically calls `Model/report_figures.py` to regenerate figures + `model_metrics.json` in `Results/`.
 

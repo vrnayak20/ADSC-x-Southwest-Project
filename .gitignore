@@ -3,6 +3,10 @@ Data/sample_09202024_tmln_obf.csv
 Data/dictionary.xlsx
 baggage_validation_data.csv
 
+# Model artifacts
+baggage_predictor_model.joblib
+
+
 # Python cache
 __pycache__/
 *.pyc

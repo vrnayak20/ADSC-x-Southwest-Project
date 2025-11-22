@@ -8,24 +8,31 @@ import json
 def run_pipeline():
     """
     Runs the model pipeline scripts to update the data and figures.
+    Trains the model first only if the model artifact is missing.
     """
     workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     model_dir = os.path.join(workspace_dir, 'Model')
-    
-    # Scripts to run in order
-    scripts = [
+
+    # Determine if model exists (saved at workspace root)
+    model_file = os.path.join(workspace_dir, 'baggage_predictor_model.joblib')
+    scripts = []
+    if not os.path.exists(model_file):
+        scripts.append('operational_model.py')  # train model only if missing
+
+    # Follow-up scripts (always run)
+    scripts.extend([
         'create_validation_data.py',
         'report_figures.py'
-    ]
-    
+    ])
+
     status_placeholder = st.empty()
     progress_bar = st.progress(0)
-    
+
     status_placeholder.info("Initializing model pipeline...")
-    
+
     for i, script_name in enumerate(scripts):
         script_path = os.path.join(model_dir, script_name)
-        
+
         if os.path.exists(script_path):
             status_placeholder.info(f"Running {script_name}...")
             try:
@@ -35,9 +42,9 @@ def run_pipeline():
                 print(f"Error running {script_name}: {e}")
         else:
             print(f"Script not found: {script_name}, skipping.")
-        
+
         progress_bar.progress((i + 1) / len(scripts))
-        
+
     status_placeholder.success("Model pipeline updated successfully!")
     status_placeholder.empty()
     progress_bar.empty()
@@ -58,6 +65,8 @@ def main():
     metrics_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'Results', 'model_metrics.json')
     r2_display = "N/A"
     mae_display = "N/A"
+    mae_val = None
+    avg_bags = None
     if os.path.exists(metrics_path):
         try:
             with open(metrics_path, 'r') as f:
@@ -72,6 +81,8 @@ def main():
         except Exception as e:
             r2_display = "Error"
             mae_display = "Error"
+            mae_val = None
+            avg_bags = None
             print(f"Failed to load metrics: {e}")
 
     # --- Key Performance Metrics ---
@@ -82,9 +93,12 @@ def main():
     with col_m2:
         st.metric(label="Mean Absolute Error (MAE)", value=mae_display)
     with col_m3:
-        st.metric(label="Avg Bags per Flight", value=avg_bags)
+        st.metric(label="Avg Bags per Flight", value=(f"{avg_bags:.2f}" if isinstance(avg_bags, (int, float)) else "N/A"))
     with col_m4:
-        st.metric(label="Avg Error Rate", value=f"{(mae_val / avg_bags * 100):.2f}%")
+        if isinstance(mae_val, (int, float)) and isinstance(avg_bags, (int, float)) and avg_bags != 0:
+            st.metric(label="Avg Error Rate", value=f"{(mae_val / avg_bags * 100):.2f}%")
+        else:
+            st.metric(label="Avg Error Rate", value="N/A")
     
     st.markdown("---")
 
