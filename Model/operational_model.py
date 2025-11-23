@@ -4,6 +4,7 @@ import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -15,7 +16,7 @@ from sklearn.ensemble import RandomForestRegressor, StackingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.neural_network import MLPRegressor
 
-DATA_FILE_NAME = 'Data/sample_09202024_tmln_obf.csv' 
+DATA_FILE_NAME = 'Data/OneDrive_3_11-22-2025/' 
 
 # Date/Route Features
 COL_DATE_DEP = 'SCHD_DEP_CENT_TS'
@@ -93,32 +94,45 @@ ALL_CATEGORICAL_FEATURES = [
 # ==============================================================================
 
 
-def load_and_clean_data(file_name):
+def load_and_clean_data(folder_path):
     """
-    Loads data, cleans it, and creates advanced features (Holidays + Cyclical Time).
+    Loads data from all CSVs in a folder, cleans it, and creates advanced features.
     """
-    print(f"--- Loading Data from {file_name} ---")
-    try:
-        all_cols_to_load = [
-            COL_DATE_DEP, COL_DATE_ARR, COL_ORIGIN, COL_DEST, COL_BAGGAGE
-        ] + BASE_NUMERIC_FEATURES
-        
-        all_cols_to_load = list(set(all_cols_to_load)) 
-        
-        df = pd.read_csv(file_name, usecols=all_cols_to_load)
-
-    except FileNotFoundError:
-        print(f"FATAL ERROR: File not found: {file_name}")
-        return None
-    except ValueError as e:
-        print(f"FATAL ERROR: A required column was not found in the CSV.")
-        print(f"Details: {e}")
-        return None
-    except Exception as e:
-        print(f"Error loading file: {e}")
+    print(f"--- Loading Data from {folder_path} ---")
+    
+    all_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
+    if not all_files:
+        print(f"FATAL ERROR: No CSV files found in {folder_path}")
         return None
 
-    print(f"Loaded {len(df)} rows.")
+    df_list = []
+    all_cols_to_load = [
+        COL_DATE_DEP, COL_DATE_ARR, COL_ORIGIN, COL_DEST, COL_BAGGAGE
+    ] + BASE_NUMERIC_FEATURES
+    all_cols_to_load = list(set(all_cols_to_load))
+
+    for file_name in all_files:
+        try:
+            df_single = pd.read_csv(file_name, usecols=all_cols_to_load)
+            df_list.append(df_single)
+        except FileNotFoundError:
+            print(f"WARNING: File not found: {file_name}")
+            continue
+        except ValueError as e:
+            print(f"WARNING: A required column was not found in {file_name}. Skipping.")
+            print(f"Details: {e}")
+            continue
+        except Exception as e:
+            print(f"Error loading file {file_name}: {e}")
+            continue
+    
+    if not df_list:
+        print("FATAL ERROR: No data could be loaded.")
+        return None
+
+    df = pd.concat(df_list, ignore_index=True)
+
+    print(f"Loaded {len(df)} rows from {len(df_list)} files.")
     df.columns = df.columns.str.strip()
 
     # --- 1. Basic Cleaning ---
@@ -210,17 +224,38 @@ def build_model_pipeline(numeric_features, categorical_features):
         remainder='passthrough'
     )
 
-    # --- Final Model Pipeline (Single XGBoost) ---
-    model_pipeline = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('regressor', XGBRegressor(
+    # --- Define Base Models for Stacking ---
+    estimators = [
+        ('xgb', XGBRegressor(
+            objective='count:poisson', # Optimized for count data
             n_estimators=1000,    
-            learning_rate=0.25,    
+            learning_rate=0.2,    
             max_depth=20,
             reg_alpha=1,
             n_jobs=-1,            
             random_state=42
+        )),
+        ('rf', RandomForestRegressor(
+            n_estimators=500,      # RF benefits from more trees
+            max_depth=25,
+            min_samples_leaf=5,    # Prevents overfitting
+            n_jobs=-1,
+            random_state=42
         ))
+    ]
+
+    # --- Stacking Regressor with a final linear model to combine results ---
+    stacking_regressor = StackingRegressor(
+        estimators=estimators,
+        final_estimator=Ridge(alpha=1.0),
+        cv=3, # Use 3-fold cross-validation to train the final estimator
+        n_jobs=-1
+    )
+
+    # --- Final Model Pipeline (Preprocessor + Stacking) ---
+    model_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', stacking_regressor)
     ])
     
     return model_pipeline
@@ -253,31 +288,6 @@ def main():
     print("Training baggage model...")
     model.fit(X_train, y_train)
 
-    # print("\n--- Overfitting Check ---")
-    
-    # # 1. Score on Training Data (What the model memorized)
-    # y_train_pred = model.predict(X_train)
-    # train_mae = mean_absolute_error(y_train, y_train_pred)
-    # train_r2 = r2_score(y_train, y_train_pred)
-    
-    # # 2. Score on Test Data (How it performs in reality)
-    # y_test_pred = model.predict(X_test)
-    # test_mae = mean_absolute_error(y_test, y_test_pred)
-    # test_r2 = r2_score(y_test, y_test_pred)
-    
-    # print(f"Training MAE: {train_mae:.4f}  |  Test MAE: {test_mae:.4f}")
-    # print(f"Training R2:  {train_r2:.4f}  |  Test R2:  {test_r2:.4f}")
-    
-    # diff = test_mae - train_mae
-    # print(f"Gap (Overfitting): {diff:.4f} bags")
-    
-    # if diff < 0.2:
-    #     print("Verdict: Excellent fit. (Low gap)")
-    # elif diff < 0.5:
-    #     print("Verdict: Minor overfitting. (Normal for deep trees)")
-    # else:
-    #     print("Verdict: High overfitting. (Model is memorizing noise)")
-
     # --- Evaluate the baggage model ---
     y_pred = model.predict(X_test)
     r2 = r2_score(y_test, y_pred)
@@ -290,27 +300,28 @@ def main():
 
     # --- Feature Importance ---
     try:
-        print("\n--- Feature Importances ---")
+        print("\n--- Feature Importances (Not available for StackingRegressor directly) ---")
+        print("Feature importances are calculated for base models inside the stack.")
         
-        # 1. Access the steps from the pipeline
-        regressor = model.named_steps['regressor']
-        preprocessor = model.named_steps['preprocessor']
+        # Access the fitted regressor from the pipeline
+        final_regressor = model.named_steps['regressor']
         
-        # 2. Get feature names from the preprocessor
-        num_features = preprocessor.named_transformers_['num'].get_feature_names_out()
-        
-        # Categorical features are OneHotEncoded, so we get the new expanded names
-        ohe_features = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(ALL_CATEGORICAL_FEATURES)
-        
-        # Combine them
-        all_feature_names = list(num_features) + list(ohe_features)
-        
-        # 3. Match importances to names
-        importances = pd.Series(regressor.feature_importances_, index=all_feature_names)
-        importances = importances.sort_values(ascending=False)
-        
-        print("Top 20 most important features:")
-        print(importances.head(20))
+        # Loop through the base estimators
+        for name, fitted_estimator in zip(final_regressor.estimators_, final_regressor.estimators):
+            if hasattr(fitted_estimator, 'feature_importances_'):
+                print(f"\n--- Top 20 Importances for {name.upper()} ---")
+                
+                # Get feature names from the preprocessor
+                preprocessor = model.named_steps['preprocessor']
+                num_features = preprocessor.named_transformers_['num'].get_feature_names_out()
+                ohe_features = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(ALL_CATEGORICAL_FEATURES)
+                all_feature_names = list(num_features) + list(ohe_features)
+                
+                # Match importances to names
+                importances = pd.Series(fitted_estimator.feature_importances_, index=all_feature_names)
+                importances = importances.sort_values(ascending=False)
+                
+                print(importances.head(20))
 
     except Exception as e:
         print(f"Could not get feature importances: {e}")

@@ -1,14 +1,25 @@
 import pandas as pd
 import numpy as np
+import os
 
-DATA_FILE_NAME = 'Data\sample_09202024_tmln_obf.csv'
+DATA_FOLDER_NAME = 'Data/OneDrive_3_11-22-2025/'
 COL_BAGGAGE = 'total_checked_bag_count'
 
 
-print(f"--- Loading data to analyze '{COL_BAGGAGE}' ---")
+print(f"--- Loading data from folder {DATA_FOLDER_NAME} to analyze '{COL_BAGGAGE}' ---")
 
 try:
-    df = pd.read_csv(DATA_FILE_NAME, usecols=[COL_BAGGAGE])
+    all_files = [os.path.join(DATA_FOLDER_NAME, f) for f in os.listdir(DATA_FOLDER_NAME) if f.endswith('.csv')]
+    
+    if not all_files:
+        raise FileNotFoundError(f"No CSV files found in {DATA_FOLDER_NAME}")
+
+    df_list = []
+    for file_path in all_files:
+        df_single = pd.read_csv(file_path, usecols=[COL_BAGGAGE])
+        df_list.append(df_single)
+        
+    df = pd.concat(df_list, ignore_index=True)
     
     # Get statistics
     stats = df[COL_BAGGAGE].describe()

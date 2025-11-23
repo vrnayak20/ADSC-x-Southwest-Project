@@ -2,6 +2,7 @@
 Data/sample_09202024_tmln_obf.csv
 Data/dictionary.xlsx
 baggage_validation_data.csv
+Data/OneDrive_3_11-22-2025/
 
 # Model artifacts
 baggage_predictor_model.joblib

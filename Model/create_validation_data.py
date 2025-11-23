@@ -9,7 +9,7 @@ from operational_model import load_and_clean_data, ALL_NUMERIC_FEATURES, ALL_CAT
 
 # --- Configuration ---
 MODEL_FILE = 'baggage_predictor_model.joblib'
-DATA_FILE = 'Data/sample_09202024_tmln_obf.csv'
+DATA_FOLDER = 'Data/OneDrive_3_11-22-2025/'
 OUTPUT_FILE = 'baggage_validation_data.csv'
 TEST_SET_SIZE = 0.2
 RANDOM_STATE = 42
@@ -22,7 +22,7 @@ def create_validation_file():
     print("--- Starting Validation Data Creation ---")
 
     # 1. Load and process the data using the same function as the training script
-    df = load_and_clean_data(DATA_FILE)
+    df = load_and_clean_data(DATA_FOLDER)
     if df is None:
         print("Halting execution due to data loading failure.")
         return
