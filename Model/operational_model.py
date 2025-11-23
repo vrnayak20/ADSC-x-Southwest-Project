@@ -12,9 +12,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import r2_score, mean_absolute_error
 from xgboost import XGBRegressor
-from sklearn.ensemble import RandomForestRegressor, StackingRegressor
-from sklearn.linear_model import Ridge
-from sklearn.neural_network import MLPRegressor
 
 DATA_FILE_NAME = 'Data/OneDrive_3_11-22-2025/' 
 
@@ -224,38 +221,18 @@ def build_model_pipeline(numeric_features, categorical_features):
         remainder='passthrough'
     )
 
-    # --- Define Base Models for Stacking ---
-    estimators = [
-        ('xgb', XGBRegressor(
+    # --- Final Model Pipeline (Single XGBoost) ---
+    model_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', XGBRegressor(
             objective='count:poisson', # Optimized for count data
-            n_estimators=1000,    
+            n_estimators=1000,      # Reduced for faster training
             learning_rate=0.2,    
-            max_depth=20,
+            max_depth=20,          # Reduced for faster training
             reg_alpha=1,
             n_jobs=-1,            
             random_state=42
-        )),
-        ('rf', RandomForestRegressor(
-            n_estimators=500,      # RF benefits from more trees
-            max_depth=25,
-            min_samples_leaf=5,    # Prevents overfitting
-            n_jobs=-1,
-            random_state=42
         ))
-    ]
-
-    # --- Stacking Regressor with a final linear model to combine results ---
-    stacking_regressor = StackingRegressor(
-        estimators=estimators,
-        final_estimator=Ridge(alpha=1.0),
-        cv=3, # Use 3-fold cross-validation to train the final estimator
-        n_jobs=-1
-    )
-
-    # --- Final Model Pipeline (Preprocessor + Stacking) ---
-    model_pipeline = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('regressor', stacking_regressor)
     ])
     
     return model_pipeline
@@ -300,28 +277,27 @@ def main():
 
     # --- Feature Importance ---
     try:
-        print("\n--- Feature Importances (Not available for StackingRegressor directly) ---")
-        print("Feature importances are calculated for base models inside the stack.")
+        print("\n--- Feature Importances ---")
         
-        # Access the fitted regressor from the pipeline
-        final_regressor = model.named_steps['regressor']
+        # 1. Access the steps from the pipeline
+        regressor = model.named_steps['regressor']
+        preprocessor = model.named_steps['preprocessor']
         
-        # Loop through the base estimators
-        for name, fitted_estimator in zip(final_regressor.estimators_, final_regressor.estimators):
-            if hasattr(fitted_estimator, 'feature_importances_'):
-                print(f"\n--- Top 20 Importances for {name.upper()} ---")
-                
-                # Get feature names from the preprocessor
-                preprocessor = model.named_steps['preprocessor']
-                num_features = preprocessor.named_transformers_['num'].get_feature_names_out()
-                ohe_features = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(ALL_CATEGORICAL_FEATURES)
-                all_feature_names = list(num_features) + list(ohe_features)
-                
-                # Match importances to names
-                importances = pd.Series(fitted_estimator.feature_importances_, index=all_feature_names)
-                importances = importances.sort_values(ascending=False)
-                
-                print(importances.head(20))
+        # 2. Get feature names from the preprocessor
+        num_features = preprocessor.named_transformers_['num'].get_feature_names_out()
+        
+        # Categorical features are OneHotEncoded, so we get the new expanded names
+        ohe_features = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(ALL_CATEGORICAL_FEATURES)
+        
+        # Combine them
+        all_feature_names = list(num_features) + list(ohe_features)
+        
+        # 3. Match importances to names
+        importances = pd.Series(regressor.feature_importances_, index=all_feature_names)
+        importances = importances.sort_values(ascending=False)
+        
+        print("Top 20 most important features:")
+        print(importances.head(20))
 
     except Exception as e:
         print(f"Could not get feature importances: {e}")
