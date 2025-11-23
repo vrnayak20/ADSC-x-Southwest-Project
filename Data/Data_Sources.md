@@ -6,7 +6,7 @@ The primary dataset used for this project is **Flight-Level Operational Data** p
 
 ## 2. Access Method
 
-The data was accessed via a secure CSV file provided for the **ADSC x Southwest collaborative project**. The raw data is stored locally within the `Data/` directory (git-ignored for privacy) and loaded into the training pipeline using `pandas`.
+The data was accessed via a secure CSV export provided for the **ADSC x Southwest collaborative project**. Raw source files are stored locally inside the `Data/` directory (these raw files should remain private / excluded from distribution where appropriate).
 
 ## 3. Data Structure
 

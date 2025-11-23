@@ -41,7 +41,7 @@ Key engineered / selected features (non-exhaustive):
 The model was tuned using a randomized search with cross-validation. Key hyperparameters include:
 
 *   `n_estimators`: 1000
-*   `learning_rate`: 0.25
+*   `learning_rate`: 0.2
 *   `max_depth`: 20
 *   `reg_alpha`: 1
 *   subsample & colsample_by_tree use defaults
@@ -52,8 +52,8 @@ These parameters were chosen to balance model complexity and generalization, pre
 ## Performance
 
 Latest metrics (see Results/model_metrics.json):
-* R²: 0.9793
-* MAE: 1.2 bags
+* R²: 0.9100
+* MAE: 3.65 bags
 Interpretation: High explanatory power; low absolute error. Users should still monitor edge cases (very early flights, holidays) for drift.
 
 ## Environment Setup (Reproducibility)
