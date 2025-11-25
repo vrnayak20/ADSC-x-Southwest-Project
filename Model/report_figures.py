@@ -3,6 +3,9 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import matplotlib.dates as mdates
+import json
+import os
+from sklearn.metrics import r2_score, mean_absolute_error
 
 # ==============================================================================
 # CONFIGURATION
@@ -19,6 +22,29 @@ def generate_figures():
     except FileNotFoundError:
         print(f"Error: Could not find {DATA_FILE}. Run create_validation_file.py first.")
         return
+
+    # --- Calculate and Save Metrics ---
+    # This ensures model_metrics.json is updated whenever figures are generated
+    print("Calculating metrics...")
+    y_true = df['total_checked_bag_count']
+    y_pred = df['PREDICTED_BAGGAGE']
+    
+    r2 = r2_score(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+    avg_bags = y_true.mean()
+    
+    metrics = {
+        'r2': round(r2, 4),
+        'mae': round(mae, 2),
+        'avg_bags_per_flight': round(avg_bags, 2),
+        'generated_at_utc': pd.Timestamp.utcnow().isoformat(),
+        'source': 'report_figures.py'
+    }
+    
+    os.makedirs('Results', exist_ok=True)
+    with open(os.path.join('Results', 'model_metrics.json'), 'w') as f:
+        json.dump(metrics, f)
+    print(f"Updated Results/model_metrics.json: R2={metrics['r2']}, MAE={metrics['mae']}")
 
     # Calculate Diff for the Combo Chart
     df['Diff'] = df['total_checked_bag_count'] - df['PREDICTED_BAGGAGE']

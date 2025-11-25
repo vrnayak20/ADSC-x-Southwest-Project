@@ -5,7 +5,14 @@ from sklearn.metrics import r2_score, mean_absolute_error
 import os, json
 
 # Import the data loading and feature engineering function from the training script
-from operational_model import load_and_clean_data, ALL_NUMERIC_FEATURES, ALL_CATEGORICAL_FEATURES, COL_BAGGAGE
+from operational_model import (
+    load_and_clean_data, 
+    ALL_NUMERIC_FEATURES, 
+    ALL_CATEGORICAL_FEATURES, 
+    COL_BAGGAGE,
+    identity_func,    # Required for loading the model (pickled function)
+    clip_predictions  # Required for loading the model (pickled function)
+)
 
 # --- Configuration ---
 MODEL_FILE = 'baggage_predictor_model.joblib'
@@ -69,12 +76,13 @@ def create_validation_file():
     try:
         r2 = r2_score(y_test, y_pred)
         mae = mean_absolute_error(y_test, y_pred)
-        avg_bags = df[COL_BAGGAGE].mean()  # average bags per flight across full dataset
+        avg_bags = y_test.mean()  # average bags per flight across validation set
         metrics = {
             'r2': round(r2, 4),
             'mae': round(mae, 2),
             'avg_bags_per_flight': round(avg_bags, 2),
-            'generated_at_utc': pd.Timestamp.utcnow().isoformat()
+            'generated_at_utc': pd.Timestamp.utcnow().isoformat(),
+            'source': 'create_validation_data.py'
         }
         os.makedirs('Results', exist_ok=True)
         with open(os.path.join('Results', 'model_metrics.json'), 'w') as f:

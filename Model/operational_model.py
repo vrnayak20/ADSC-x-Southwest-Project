@@ -9,7 +9,7 @@ import os
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
+from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
 from sklearn.metrics import r2_score, mean_absolute_error
 from xgboost import XGBRegressor
 
@@ -196,6 +196,21 @@ def load_and_clean_data(folder_path):
     return df
 
 
+def clip_predictions(y):
+    """
+    Clips predictions to the known physical limit of 150 bags.
+    """
+    return np.clip(y, 0, 150)
+
+
+def identity_func(y):
+    """
+    Identity function for TransformedTargetRegressor.
+    Required for pickling.
+    """
+    return y
+
+
 def build_model_pipeline(numeric_features, categorical_features):
     """
     Creates the full ML preprocessing and model pipeline.
@@ -222,20 +237,29 @@ def build_model_pipeline(numeric_features, categorical_features):
     )
 
     # --- Final Model Pipeline (Single XGBoost) ---
-    model_pipeline = Pipeline(steps=[
+    inner_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('regressor', XGBRegressor(
-            objective='count:poisson', # Optimized for count data
-            n_estimators=1000,      # Reduced for faster training
+            objective='count:poisson',
+            n_estimators=1000,
             learning_rate=0.2,    
-            max_depth=20,          # Reduced for faster training
+            max_depth=20,
             reg_alpha=1,
-            n_jobs=-1,            
+            n_jobs=-1,
             random_state=42
         ))
     ])
     
-    return model_pipeline
+    # --- Wrap in TransformedTargetRegressor to enforce limits ---
+    # This ensures that whenever we call predict(), the output is automatically clipped.
+    model = TransformedTargetRegressor(
+        regressor=inner_pipeline,
+        func=identity_func, # Use named function instead of lambda for pickling support
+        inverse_func=clip_predictions, # Clip the output predictions
+        check_inverse=False # Clipping is not invertible, so skip the check
+    )
+
+    return model
 
 
 def main():
@@ -280,8 +304,10 @@ def main():
         print("\n--- Feature Importances ---")
         
         # 1. Access the steps from the pipeline
-        regressor = model.named_steps['regressor']
-        preprocessor = model.named_steps['preprocessor']
+        # Since we wrapped it in TransformedTargetRegressor, we access the inner regressor
+        inner_pipeline = model.regressor_
+        regressor = inner_pipeline.named_steps['regressor']
+        preprocessor = inner_pipeline.named_steps['preprocessor']
         
         # 2. Get feature names from the preprocessor
         num_features = preprocessor.named_transformers_['num'].get_feature_names_out()

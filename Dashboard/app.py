@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import json
+import time
 
 def run_pipeline():
     """
@@ -12,42 +13,80 @@ def run_pipeline():
     """
     workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     model_dir = os.path.join(workspace_dir, 'Model')
+    lock_file = os.path.join(workspace_dir, 'pipeline.lock')
 
-    # Determine if model exists (saved at workspace root)
-    model_file = os.path.join(workspace_dir, 'baggage_predictor_model.joblib')
-    scripts = []
-    if not os.path.exists(model_file):
-        scripts.append('operational_model.py')  # train model only if missing
-
-    # Follow-up scripts (always run)
-    scripts.extend([
-        'create_validation_data.py',
-        'report_figures.py'
-    ])
-
-    status_placeholder = st.empty()
-    progress_bar = st.progress(0)
-
-    status_placeholder.info("Initializing model pipeline...")
-
-    for i, script_name in enumerate(scripts):
-        script_path = os.path.join(model_dir, script_name)
-
-        if os.path.exists(script_path):
-            status_placeholder.info(f"Running {script_name}...")
-            try:
-                subprocess.run([sys.executable, script_path], check=True, cwd=workspace_dir)
-            except subprocess.CalledProcessError as e:
-                st.error(f"Failed to run {script_name}. See terminal for details.")
-                print(f"Error running {script_name}: {e}")
+    # --- Lock File Mechanism ---
+    # Prevents multiple concurrent runs if the app is reloaded or opened in multiple tabs
+    if os.path.exists(lock_file):
+        # Check if the lock file is stale (older than 1 hour)
+        file_age = time.time() - os.path.getmtime(lock_file)
+        if file_age < 3600: 
+            st.warning("Model training is currently in progress. Please wait for it to complete.")
+            return
         else:
-            print(f"Script not found: {script_name}, skipping.")
+            st.warning("Found a stale lock file from a previous run. Cleaning up and restarting.")
+            try:
+                os.remove(lock_file)
+            except OSError:
+                pass
 
-        progress_bar.progress((i + 1) / len(scripts))
+    # Create lock file
+    try:
+        with open(lock_file, 'w') as f:
+            f.write("locked")
+    except IOError:
+        st.error("Could not create lock file. Permission denied?")
+        return
 
-    status_placeholder.success("Model pipeline updated successfully!")
-    status_placeholder.empty()
-    progress_bar.empty()
+    try:
+        # Determine if model exists (saved at workspace root)
+        model_file = os.path.join(workspace_dir, 'baggage_predictor_model.joblib')
+        
+        # Check if model exists. If not, stop and ask user to train it manually.
+        if not os.path.exists(model_file):
+            st.error("Model file 'baggage_predictor_model.joblib' not found!")
+            st.warning("Please run 'Model/operational_model.py' manually in your terminal to train the model first.")
+            return
+
+        # Scripts to run for dashboard updates
+        scripts = [
+            'create_validation_data.py',
+            'report_figures.py'
+        ]
+
+        status_placeholder = st.empty()
+        progress_bar = st.progress(0)
+
+        status_placeholder.info("Initializing model pipeline...")
+
+        for i, script_name in enumerate(scripts):
+            script_path = os.path.join(model_dir, script_name)
+
+            if os.path.exists(script_path):
+                status_placeholder.info(f"Running {script_name}...")
+                try:
+                    subprocess.run([sys.executable, script_path], check=True, cwd=workspace_dir)
+                except subprocess.CalledProcessError as e:
+                    st.error(f"Failed to run {script_name}. See terminal for details.")
+                    print(f"Error running {script_name}: {e}")
+                    # Stop pipeline on error
+                    break
+            else:
+                print(f"Script not found: {script_name}, skipping.")
+
+            progress_bar.progress((i + 1) / len(scripts))
+
+        status_placeholder.success("Model pipeline updated successfully!")
+        status_placeholder.empty()
+        progress_bar.empty()
+
+    finally:
+        # Always remove the lock file when done, even if errors occur
+        if os.path.exists(lock_file):
+            try:
+                os.remove(lock_file)
+            except OSError:
+                pass
 
 def main():
     """

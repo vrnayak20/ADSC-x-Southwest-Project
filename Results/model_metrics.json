@@ -1,1 +1,1 @@
-{"r2": 0.91, "mae": 3.65, "avg_bags_per_flight": 15.55, "generated_at_utc": "2025-11-23T12:40:39.171708+00:00"}
+{"r2": 0.9113, "mae": 3.74, "avg_bags_per_flight": 15.56, "generated_at_utc": "2025-11-25T00:32:09.929198+00:00", "source": "report_figures.py"}
